@@ -52,6 +52,12 @@ type ServerCapabilitiesTools struct {
 	ListChanged *bool `json:"listChanged,omitempty" yaml:"listChanged,omitempty" mapstructure:"listChanged,omitempty"`
 }
 
+type Completion struct {
+	Values  []string `json:"values" yaml:"values" mapstructure:"values"`
+	Total   int      `json:"total" yaml:"total" mapstructure:"total"`
+	HasMore bool     `json:"hasMore" yaml:"hasMore" mapstructure:"hasMore"`
+}
+
 // After receiving an initialize request from the client, the server sends this
 // response.
 type InitializeResponse struct {
@@ -76,6 +82,11 @@ type InitializeResponse struct {
 
 	// ServerInfo corresponds to the JSON schema field "serverInfo".
 	ServerInfo implementation `json:"serverInfo" yaml:"serverInfo" mapstructure:"serverInfo"`
+}
+
+// After recieving completion/complete request, this request provides suggestion for data
+type CompletionResponse struct {
+	Completion Completion `json:"completion" yaml:"completion" mapstructure:"completion"`
 }
 
 // This result property is reserved by the protocol to allow clients and servers to
@@ -136,7 +147,7 @@ func (j *implementation) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-type baseCallToolRequestParams struct {
+type BaseCallToolRequestParams struct {
 	// Arguments corresponds to the JSON schema field "arguments".
 	// It is stored as a []byte to enable efficient marshaling and unmarshaling into custom types later on in the protocol
 	Arguments json.RawMessage `json:"arguments" yaml:"arguments" mapstructure:"arguments"`

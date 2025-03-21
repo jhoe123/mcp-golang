@@ -115,14 +115,14 @@ type Server struct {
 type prompt struct {
 	Name              string
 	Description       string
-	Handler           func(context.Context, baseGetPromptRequestParamsArguments) *promptResponseSent
+	Handler           func(context.Context, BaseGetPromptRequestParamsArguments) *promptResponseSent
 	PromptInputSchema *PromptSchema
 }
 
 type tool struct {
 	Name            string
 	Description     string
-	Handler         func(context.Context, baseCallToolRequestParams) *toolResponseSent
+	Handler         func(context.Context, BaseCallToolRequestParams) *toolResponseSent
 	ToolInputSchema *jsonschema.Schema
 }
 
@@ -190,6 +190,16 @@ func (s *Server) RegisterTool(name string, description string, handler any) erro
 		ToolInputSchema: inputSchema,
 	})
 
+	return s.sendToolListChangedNotification()
+}
+
+func (s *Server) RegisterToolFromDef(def *ToolDef, handler any) error {
+	s.tools.Store(def.Name, &tool{
+		Name:            def.Name,
+		Description:     def.Desc,
+		Handler:         createRawWrapperToolHandler(handler),
+		ToolInputSchema: def.InputSchema,
+	})
 	return s.sendToolListChangedNotification()
 }
 
@@ -315,6 +325,17 @@ func (s *Server) RegisterPrompt(name string, description string, handler any) er
 	return s.sendPromptListChangedNotification()
 }
 
+func (s *Server) RegisterPromptFromDef(def *PromptDef, handler any) error {
+	s.prompts.Store(def.Name, &prompt{
+		Name:              def.Name,
+		Description:       def.Desc,
+		Handler:           createRawWrapperPromptHandler(handler),
+		PromptInputSchema: def.InputSchema,
+	})
+
+	return s.sendPromptListChangedNotification()
+}
+
 func (s *Server) sendPromptListChangedNotification() error {
 	if !s.isRunning {
 		return nil
@@ -332,7 +353,7 @@ func (s *Server) DeregisterPrompt(name string) error {
 	return s.sendPromptListChangedNotification()
 }
 
-func createWrappedPromptHandler(userHandler any) func(context.Context, baseGetPromptRequestParamsArguments) *promptResponseSent {
+func createWrappedPromptHandler(userHandler any) func(context.Context, BaseGetPromptRequestParamsArguments) *promptResponseSent {
 	handlerValue := reflect.ValueOf(userHandler)
 	handlerType := handlerValue.Type()
 	var argumentType reflect.Type
@@ -341,7 +362,7 @@ func createWrappedPromptHandler(userHandler any) func(context.Context, baseGetPr
 	} else if handlerType.NumIn() == 1 {
 		argumentType = handlerType.In(0)
 	}
-	return func(ctx context.Context, arguments baseGetPromptRequestParamsArguments) *promptResponseSent {
+	return func(ctx context.Context, arguments BaseGetPromptRequestParamsArguments) *promptResponseSent {
 		// Instantiate a struct of the type of the arguments
 		if !reflect.New(argumentType).CanInterface() {
 			return newPromptResponseSentError(fmt.Errorf("arguments must be a struct"))
@@ -384,6 +405,18 @@ func createWrappedPromptHandler(userHandler any) func(context.Context, baseGetPr
 			return newPromptResponseSent(promptR.(*PromptResponse))
 		}
 		return newPromptResponseSentError(errorOut.(error))
+	}
+}
+
+// @param: callback function
+func createRawWrapperPromptHandler(callback any) func(context.Context, BaseGetPromptRequestParamsArguments) *promptResponseSent {
+	callbackFunc, ok := callback.(func(ctx context.Context, arguments BaseGetPromptRequestParamsArguments) (*PromptResponse, error))
+	if !ok {
+		panic("callback is not a function")
+	}
+	return func(ctx context.Context, arguments BaseGetPromptRequestParamsArguments) *promptResponseSent {
+		output, err := callbackFunc(ctx, arguments)
+		return &promptResponseSent{Response: output, Error: err}
 	}
 }
 
@@ -484,7 +517,7 @@ func createJsonSchemaFromHandler(handler any) *jsonschema.Schema {
 // This takes a user provided handler and returns a wrapped handler which can be used to actually answer requests
 // Concretely, it will deserialize the arguments and call the user provided handler and then serialize the response
 // If the handler returns an error, it will be serialized and sent back as a tool error rather than a protocol error
-func createWrappedToolHandler(userHandler any) func(context.Context, baseCallToolRequestParams) *toolResponseSent {
+func createWrappedToolHandler(userHandler any) func(context.Context, BaseCallToolRequestParams) *toolResponseSent {
 	handlerValue := reflect.ValueOf(userHandler)
 	handlerType := handlerValue.Type()
 	var argumentType reflect.Type
@@ -493,7 +526,7 @@ func createWrappedToolHandler(userHandler any) func(context.Context, baseCallToo
 	} else if handlerType.NumIn() == 1 {
 		argumentType = handlerType.In(0)
 	}
-	return func(ctx context.Context, arguments baseCallToolRequestParams) *toolResponseSent {
+	return func(ctx context.Context, arguments BaseCallToolRequestParams) *toolResponseSent {
 		// Instantiate a struct of the type of the arguments
 		if !reflect.New(argumentType).CanInterface() {
 			return newToolResponseSentError(errors.Wrap(fmt.Errorf("arguments must be a struct"), "failed to create argument struct"))
@@ -541,6 +574,18 @@ func createWrappedToolHandler(userHandler any) func(context.Context, baseCallToo
 	}
 }
 
+// @param: callback function
+func createRawWrapperToolHandler(callback any) func(context.Context, BaseCallToolRequestParams) *toolResponseSent {
+	callbackFunc, ok := callback.(func(ctx context.Context, arguments BaseCallToolRequestParams) (*ToolResponse, error))
+	if !ok {
+		panic("callback is not a function")
+	}
+	return func(ctx context.Context, arguments BaseCallToolRequestParams) *toolResponseSent {
+		output, err := callbackFunc(ctx, arguments)
+		return &toolResponseSent{Response: output, Error: err}
+	}
+}
+
 func (s *Server) Serve() error {
 	if s.isRunning {
 		return fmt.Errorf("server is already running")
@@ -554,6 +599,7 @@ func (s *Server) Serve() error {
 	pr.SetRequestHandler("prompts/get", s.handlePromptCalls)
 	pr.SetRequestHandler("resources/list", s.handleListResources)
 	pr.SetRequestHandler("resources/read", s.handleResourceCalls)
+	pr.SetRequestHandler("completion/complete", s.handleCompletion)
 	err := pr.Connect(s.transport)
 	if err != nil {
 		return err
@@ -572,6 +618,17 @@ func (s *Server) handleInitialize(ctx context.Context, request *transport.BaseJS
 		ServerInfo: implementation{
 			Name:    s.serverName,
 			Version: s.serverVersion,
+		},
+	}, nil
+}
+
+// implement completion/complete the MPC suggetion functionality
+func (s *Server) handleCompletion(ctx context.Context, req *transport.BaseJSONRPCRequest, _ protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
+	return CompletionResponse{
+		Completion: Completion{
+			Values:  []string{}, //TODO: no suggestion for now
+			Total:   0,
+			HasMore: false,
 		},
 	}, nil
 }
@@ -652,7 +709,7 @@ func (s *Server) handleListTools(ctx context.Context, request *transport.BaseJSO
 }
 
 func (s *Server) handleToolCalls(ctx context.Context, req *transport.BaseJSONRPCRequest, _ protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
-	params := baseCallToolRequestParams{}
+	params := BaseCallToolRequestParams{}
 	// Instantiate a struct of the type of the arguments
 	err := json.Unmarshal(req.Params, &params)
 	if err != nil {
@@ -674,7 +731,7 @@ func (s *Server) handleToolCalls(ctx context.Context, req *transport.BaseJSONRPC
 	return toolToUse.Handler(ctx, params), nil
 }
 func (s *Server) generateCapabilities() ServerCapabilities {
-	t := false
+	t := true
 	return ServerCapabilities{
 		Tools: func() *ServerCapabilitiesTools {
 			return &ServerCapabilitiesTools{
@@ -830,7 +887,7 @@ func (s *Server) handleListResources(ctx context.Context, request *transport.Bas
 }
 
 func (s *Server) handlePromptCalls(ctx context.Context, req *transport.BaseJSONRPCRequest, extra protocol.RequestHandlerExtra) (transport.JsonRpcBody, error) {
-	params := baseGetPromptRequestParamsArguments{}
+	params := BaseGetPromptRequestParamsArguments{}
 	// Instantiate a struct of the type of the arguments
 	err := json.Unmarshal(req.Params, &params)
 	if err != nil {

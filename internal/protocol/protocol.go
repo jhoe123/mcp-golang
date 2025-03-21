@@ -69,6 +69,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -176,6 +177,7 @@ func (p *Protocol) Connect(tr transport.Transport) error {
 	})
 
 	tr.SetMessageHandler(func(ctx context.Context, message *transport.BaseJsonRpcMessage) {
+		log.Println("received message:", message.Type)
 		switch m := message.Type; {
 		case m == transport.BaseMessageTypeJSONRPCRequestType:
 			p.handleRequest(ctx, message.JsonRpcRequest)
@@ -185,6 +187,8 @@ func (p *Protocol) Connect(tr transport.Transport) error {
 			p.handleResponse(message.JsonRpcResponse, nil)
 		case m == transport.BaseMessageTypeJSONRPCErrorType:
 			p.handleResponse(nil, message.JsonRpcError)
+		default:
+			log.Println("unknown message type:", m)
 		}
 	})
 
@@ -245,6 +249,8 @@ func (p *Protocol) handleNotification(notification *transport.BaseJSONRPCNotific
 }
 
 func (p *Protocol) handleRequest(ctx context.Context, request *transport.BaseJSONRPCRequest) {
+	js, _ := request.Params.MarshalJSON()
+	log.Println("handle request:", request.Method, string(js))
 	p.mu.RLock()
 	handler := p.requestHandlers[request.Method]
 	if handler == nil {
@@ -289,6 +295,8 @@ func (p *Protocol) handleRequest(ctx context.Context, request *transport.BaseJSO
 			Id:      request.Id,
 			Result:  jsonResult,
 		}
+		js, _ := transport.NewBaseMessageResponse(response).MarshalJSON()
+		log.Println("response:", string(js))
 
 		if err := p.transport.Send(ctx, transport.NewBaseMessageResponse(response)); err != nil {
 			println("error:", err.Error())

@@ -2,7 +2,7 @@ package mcp_golang
 
 import "encoding/json"
 
-type baseGetPromptRequestParamsArguments struct {
+type BaseGetPromptRequestParamsArguments struct {
 	// We will deserialize the arguments into the users struct later on
 	Arguments json.RawMessage `json:"arguments,omitempty" yaml:"arguments,omitempty" mapstructure:"arguments,omitempty"`
 

@@ -98,7 +98,7 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments any) (*Too
 		return nil, errors.Wrap(err, "failed to marshal arguments")
 	}
 
-	params := baseCallToolRequestParams{
+	params := BaseCallToolRequestParams{
 		Name:      name,
 		Arguments: argumentsJson,
 	}
@@ -162,7 +162,7 @@ func (c *Client) GetPrompt(ctx context.Context, name string, arguments any) (*Pr
 		return nil, errors.Wrap(err, "failed to marshal arguments")
 	}
 
-	params := baseGetPromptRequestParamsArguments{
+	params := BaseGetPromptRequestParamsArguments{
 		Name:      name,
 		Arguments: argumentsJson,
 	}

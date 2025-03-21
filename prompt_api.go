@@ -1,5 +1,7 @@
 package mcp_golang
 
+import "encoding/json"
+
 type PromptMessage struct {
 	Content *Content `json:"content" yaml:"content" mapstructure:"content"`
 	Role    Role     `json:"role" yaml:"role" mapstructure:"role"`
@@ -26,4 +28,8 @@ func NewPromptResponse(description string, messages ...*PromptMessage) *PromptRe
 		Description: &description,
 		Messages:    messages,
 	}
+}
+
+func (c *PromptResponse) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, c)
 }
