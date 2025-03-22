@@ -11,7 +11,11 @@ type ToolDef struct {
 }
 
 type PromptDef struct {
-	Name        string        `json:"name"`
-	Desc        string        `json:"desc"`
-	InputSchema *PromptSchema `json:"params"`
+	Definition *PromptSchema `json:"definition"`
+	Response   []PromptRes   `json:"response"`
+}
+
+type PromptRes struct {
+	Content string `json:"content"`
+	Role    string `json:"role`
 }

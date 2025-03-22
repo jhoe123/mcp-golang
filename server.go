@@ -326,11 +326,13 @@ func (s *Server) RegisterPrompt(name string, description string, handler any) er
 }
 
 func (s *Server) RegisterPromptFromDef(def *PromptDef, handler any) error {
-	s.prompts.Store(def.Name, &prompt{
-		Name:              def.Name,
-		Description:       def.Desc,
+	//js, _ := json.Marshal(def)
+	//println(string(js))
+	s.prompts.Store(def.Definition.Name, &prompt{
+		Name:              def.Definition.Name,
+		Description:       *def.Definition.Description,
 		Handler:           createRawWrapperPromptHandler(handler),
-		PromptInputSchema: def.InputSchema,
+		PromptInputSchema: def.Definition,
 	})
 
 	return s.sendPromptListChangedNotification()

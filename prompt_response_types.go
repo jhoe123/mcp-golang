@@ -39,4 +39,6 @@ type PromptSchemaArgument struct {
 
 	// Whether this argument must be provided.
 	Required *bool `json:"required,omitempty" yaml:"required,omitempty" mapstructure:"required,omitempty"`
+	// The type of the argument.
+	Type string `json:"type" yaml:"type" mapstructure:"type,omitempty"`
 }
